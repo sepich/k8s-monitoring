@@ -2,6 +2,7 @@
 
 This would create separate namespace `monitoring` and setup such components to it:
 - Prometheus
+- Prometheus node-exporter
 - [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics)
 - Grafana
 
