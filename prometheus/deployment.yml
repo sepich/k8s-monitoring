@@ -4,6 +4,9 @@ metadata:
   name: prometheus
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: prometheus
   template:
     metadata:
       labels:
@@ -14,6 +17,8 @@ spec:
         - name: prometheus
           image: prom/prometheus
           args:
+            - "--web.external-url=/admin/prometheus/"
+            - "--web.route-prefix=/"
             - "--web.enable-lifecycle" # Enable shutdown and reload via HTTP request.
             - "--config.file=/etc/prometheus/prometheus.yml"
           volumeMounts:
