@@ -24,7 +24,7 @@ data:
   dashboards.yml: |
     apiVersion: 1
     providers:
-    - name: 'default'
+    - name: default
       orgId: 1
       folder: ''
       type: file
