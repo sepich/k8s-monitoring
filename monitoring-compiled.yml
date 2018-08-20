@@ -20,7 +20,7 @@ spec:
         app: grafana
     spec:
       containers:
-      - image: grafana/grafana
+      - image: grafana/grafana:master
         name: grafana
         imagePullPolicy: IfNotPresent
         resources:
@@ -34,6 +34,8 @@ spec:
           - name: GF_AUTH_BASIC_ENABLED
             value: "false"
           - name: GF_AUTH_ANONYMOUS_ENABLED
+            value: "true"
+          - name: GF_EXPLORE_ENABLED
             value: "true"
           - name: GF_AUTH_ANONYMOUS_ORG_ROLE
             value: Admin
@@ -310,10 +312,12 @@ spec:
         args:
           - --path.procfs=/host/proc
           - --path.sysfs=/host/sys
-          - --collector.filesystem.ignored-mount-points="^/(sys|proc|host|etc)($|/)"
-        ports:
-          - containerPort: 9100
-            hostPort: 9100
+          - --collector.netdev.ignored-devices=^(lo|docker[0-9]|veth.+)$
+          - --collector.filesystem.ignored-mount-points=^/(dev|sys|proc|host|etc)($|/)
+          - --collector.filesystem.ignored-fs-types=^(autofs|binfmt_misc|cgroup|configfs|debugfs|devpts|devtmpfs|efivarfs|tmpfs|nsfs|fusectl|hugetlbfs|mqueue|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|sysfs|tracefs)$
+          - --no-collector.bcache
+          - --no-collector.infiniband
+          - --no-collector.wifi
         resources:
           limits:
             cpu: 102m
