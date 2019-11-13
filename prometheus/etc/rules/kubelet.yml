@@ -1,0 +1,58 @@
+groups:
+- name: kubelet
+  rules:
+  - alert: KubeletPods
+    expr: 100*max(kubelet_running_pod_count) by (instance) / max(label_replace(kube_node_status_allocatable_pods, "instance", "$1", "node", "(.*)")) by (instance) > 90
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: Running pod count is {{printf "%.2f" $value}}% of limit
+
+  - alert: KubeletConfig
+    expr: kubelet_node_config_error != 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: Kublet config error
+
+  - alert: KubeletCert
+    expr: (kubelet_certificate_manager_client_expiration_seconds - time())/3600/24 <14
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: Cert expires in {{printf "%.2f" $value}}days
+
+  - alert: KubeletDocker
+    expr: rate(kubelet_docker_operations_errors_total[5m]) > 0
+    for: 15m
+    labels:
+      severity: informational
+    annotations:
+      description: Docker operation {{ $labels.operation_type }} fails
+
+  - alert: KubeletRuntime
+    expr: rate(kubelet_runtime_operations_errors[5m])>0
+    for: 15m
+    labels:
+      severity: informational
+    annotations:
+      description: Runtime operation {{ $labels.operation_type }} fails
+
+  - alert: KubeletRest
+    expr: rate(rest_client_requests_total{code="<error>"}[5m])>0
+    for: 15m
+    labels:
+      severity: informational
+    annotations:
+      description: Rest operation {{ $labels.method }} fails
+
+  - alert: KubeletStorage
+    expr: rate(storage_operation_errors_total[5m])>0
+    for: 15m
+    labels:
+      severity: informational
+    annotations:
+      description: Storage operation {{ $labels.operation_name }} fails in {{ $labels.volume_plugin }}

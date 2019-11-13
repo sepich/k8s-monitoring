@@ -1,0 +1,38 @@
+groups:
+- name: cloudwatch
+  rules:
+  - alert: ELBProbeFailed
+    expr: aws_elb_un_healthy_host_count_average > 0
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.load_balancer_name}}'
+    annotations:
+      description: '{{printf "%.2f" $value}} upstream(s) down'
+
+  - alert: ELBProbeFailed
+    expr: aws_elb_un_healthy_host_count_average > 0
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.load_balancer_name}}'
+    annotations:
+      description: '{{printf "%.2f" $value}} upstream(s) down'
+
+  - alert: ELBConfig
+    expr: aws_elb_healthy_host_count_average + aws_elb_un_healthy_host_count_average <2
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.load_balancer_name}}'
+    annotations:
+      description: '{{printf "%.2f" $value}} host(s) configured'
+
+  - alert: EFSBurstableCreditsCount
+    expr: aws_efs_burst_credit_balance_average < 200000000
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.file_system_id}}'
+    annotations:
+      description: 'EFS credits remaining:{{printf "%.2f" $value}}'

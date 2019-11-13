@@ -1,0 +1,21 @@
+groups:
+- name: pushgateway
+  rules:
+
+  # daily
+  - alert: PushExpiredDaily
+    expr: (time()-push_time_seconds{instance!="pt-table-checksum"})/3600/24 > 2
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Last {{$labels.job}}/{{$labels.stack}} push is {{printf "%.0f" $value}} days old
+
+  # weekly
+  - alert: PushExpiredWeekly
+    expr: (time()-push_time_seconds{instance="pt-table-checksum"})/3600/24 > 8
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Last {{$labels.job}}/{{$labels.stack}} push is {{printf "%.0f" $value}} days old

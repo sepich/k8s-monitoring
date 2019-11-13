@@ -7,35 +7,131 @@ spec:
   selector:
     matchLabels:
       app: prometheus
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
         app: prometheus
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9080"
     spec:
       serviceAccountName: prometheus
-      containers:
-        - name: prometheus
-          image: prom/prometheus
-          args:
-            - "--web.external-url=/admin/prometheus/"
-            - "--web.route-prefix=/"
-            - "--web.enable-lifecycle" # Enable shutdown and reload via HTTP request.
-            - "--config.file=/etc/prometheus/prometheus.yml"
+      securityContext:
+        runAsUser: 65534
+      initContainers:
+        - name: init-vol
+          image: busybox
+          securityContext:
+            runAsUser: 0
+          command:
+          - sh
+          - -c
+          - chmod 777 /etc/prometheus; ln -s /etc/prometheus/git/k8s-monitoring/prometheus/etc/rules /etc/prometheus/rules; touch /etc/prometheus/prometheus.yml; chown 65534 /etc/prometheus/prometheus.yml
           volumeMounts:
-            - name: prometheus-config
+            - name: shared-vol
+              mountPath: /etc/prometheus/
+      containers:
+        - name: git-sync
+          image: k8s.gcr.io/git-sync:v3.1.1  # https://github.com/kubernetes/git-sync/issues/198
+          args:
+            - -repo=https://github.com/sepich/k8s-monitoring.git
+            - -depth=1
+            - -wait=60
+            - -root=/etc/prometheus/git
+            - -http-bind=0.0.0.0:9080
+            - -max-sync-failures=3
+            - -webhook-url=http://127.0.0.1:9090/-/reload
+          env:
+            - name: HOME
+              value: /tmp
+          resources:
+            limits:
+              memory: 75Mi
+            requests:
+              memory: 50Mi
+          volumeMounts:
+            - name: shared-vol
+              mountPath: /etc/prometheus/
+        # prom should start before sidecar and create WAL, or sidecar find no files and do not upload
+        - name: prometheus
+          image: prom/prometheus:v2.13.0
+          args:
+            # running behing reverse-proxy
+            - --web.external-url=/admin/prometheus/
+            - --web.route-prefix=/
+            - --web.enable-lifecycle
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/data
+            - --storage.tsdb.min-block-duration=15m
+            - --storage.tsdb.max-block-duration=15m
+            - --storage.tsdb.retention.time=1d
+          volumeMounts:
+            - name: shared-vol
               mountPath: /etc/prometheus/
             - name: prometheus-storage
               mountPath: /data/
+            - name: etcd-client                         #drop on singleserver
+              mountPath: /run/secrets/etcd/             #drop on singleserver
           resources:
             requests:
-              cpu: 500m
-              memory: 500M
+              memory: 1Gi
+              cpu: 100m
             limits:
-              cpu: 500m
-              memory: 500M
+              memory: 1Gi
+        - name: thanos-sidecar
+          image: thanosio/thanos:v0.8.1
+          args:
+          - sidecar
+          - --tsdb.path=/data
+          - --prometheus.url=http://127.0.0.1:9090
+          - --reloader.config-file=/run/configs/prometheus.tmpl.yml
+          - --reloader.config-envsubst-file=/etc/prometheus/prometheus.yml
+          - --reloader.rule-dir=/etc/prometheus/rules/
+          - --objstore.config-file=/run/secrets/storage.yml  #drop on dev0
+          livenessProbe:
+            httpGet:
+              port: 10902
+              path: /-/healthy
+          readinessProbe:
+            httpGet:
+              port: 10902
+              path: /-/ready
+          resources:
+            requests:
+              memory: 500Mi
+              cpu: 10m
+            limits:
+              memory: 500Mi
+          ports:
+          - name: sidecar-http
+            containerPort: 10902
+          volumeMounts:
+            - name: shared-vol
+              mountPath: /etc/prometheus/
+            - name: prometheus-config
+              mountPath: /run/configs/
+            - name: prometheus-storage
+              mountPath: /data/
+            - name: thanos-storage                      #drop on dev0
+              mountPath: /run/secrets/                  #drop on dev0
+      priorityClassName: high
+      dnsConfig:
+        options:
+        - name: ndots
+          value: '2'
       volumes:
         - name: prometheus-config
           configMap:
             name: prometheus-config
+        - name: shared-vol
+          emptyDir: {}
         - name: prometheus-storage
           emptyDir: {}
+        - name: thanos-storage                          #drop on dev0
+          secret:                                       #drop on dev0
+            secretName: thanos-storage                  #drop on dev0
+        - name: etcd-client                             #drop on singleserver
+          secret:                                       #drop on singleserver
+            secretName: etcd-client                     #drop on singleserver

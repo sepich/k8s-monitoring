@@ -1,0 +1,149 @@
+groups:
+- name: smart
+  rules:
+  - alert: SmartDisabled
+    expr: smartmon_device_smart_available==1 and smartmon_device_smart_enabled==0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART disabled on {{$labels.type}} {{$labels.disk}}
+
+  - alert: SmartHealth
+    expr: smartmon_device_smart_healthy!=1 and smartmon_device_smart_enabled==1
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART unhealthy on {{$labels.type}} {{$labels.disk}}
+
+  - alert: SmartDefects
+    expr: increase(smartmon_grown_defects_count_raw_value[1d])>0
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART defects grow {{$labels.type}} {{$labels.disk}}
+
+  - alert: SmartPowerCycles
+    expr: increase(smartmon_power_cycle_count_raw_value[1d])>10
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: Disk {{$labels.type}} {{$labels.disk}} power cycles {{printf "%.0f" $value}}/day
+
+  - alert: SmartExpired
+    expr: (time() - smartmon_smartctl_run)/60 > 15
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: '{{$labels.type}} {{$labels.disk}} no data for {{printf "%.0f" $value}}min'
+
+  - alert: SmartTemp
+    expr: smartmon_temperature_celsius_raw_value > 40
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: '{{$labels.type}} {{$labels.disk}} temperature: {{printf "%.0f" $value}}C'
+
+  - alert: SmartTemp
+    expr: smartmon_temperature_celsius_raw_value > 60
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      description: '{{$labels.type}} {{$labels.disk}} temperature: {{printf "%.0f" $value}}C'
+
+  - alert: SmartWearout
+    expr: smartmon_media_wearout_indicator_value < 80
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART {{$labels.type}} {{$labels.disk}} wear out
+
+  - alert: SmartCommand
+    expr: smartmon_command_timeout_value < 80
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART {{$labels.type}} {{$labels.disk}} command timeout high
+
+  - alert: SmartE2E
+    expr: smartmon_end_to_end_error_value <= smartmon_end_to_end_error_threshold
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART {{$labels.type}} {{$labels.disk}} e2e fails
+
+  - alert: SmartReadErrors
+    expr: smartmon_raw_read_error_rate_value <= smartmon_raw_read_error_rate_threshold
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART {{$labels.type}} {{$labels.disk}} read errors
+
+  - alert: SmartReallocated
+    expr: smartmon_reallocated_sector_ct_value <= smartmon_reallocated_sector_ct_threshold
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART {{$labels.type}} {{$labels.disk}} reallocated sectors
+
+  - alert: SmartSpinRetry
+    expr: smartmon_spin_retry_count_value <= smartmon_spin_retry_count_threshold
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART {{$labels.type}} {{$labels.disk}} spin retries
+
+  - alert: SmartFailChip
+    expr: smartmon_program_fail_count_chip_value <= smartmon_program_fail_count_chip_threshold
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART {{$labels.type}} {{$labels.disk}} fail count chip
+
+  - alert: SmartECC
+    expr: increase(smartmon_hardware_ecc_recovered_raw_value[1d]) > 0
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART {{$labels.type}} {{$labels.disk}} ecc recovered {{printf "%.0f" $value}}/day
+
+  # https://arstechnica.com/civis/viewtopic.php?p=22062211
+  # UDMA CRC Error Count = cabling errors; if this is higher than 1000 and increasing you have severe cabling problems; under 100 does not need to trigger any alarm
+  - alert: SmartCRC
+    expr: smartmon_udma_crc_error_count_raw_value > 0
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART {{$labels.type}} {{$labels.disk}} cable crc errors
+
+  # total number of sectors waiting for remapping. Later, when some of these sectors are read successfully, the value is decreased. If errors still occur when reading some sector, the hard drive will try to restore the data, transfer it to the reserved disk area (spare area) and mark this sector as remapped.
+  - alert: SmartPending
+    expr: smartmon_current_pending_sector_raw_value > 1
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART {{$labels.type}} {{$labels.disk}} pending sectors {{printf "%.0f" $value}}
+
+  - alert: SmartErase
+    expr: increase(smartmon_erase_fail_count_total_raw_value[1d]) > 0
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: SMART {{$labels.type}} {{$labels.disk}} erase fail count {{printf "%.0f" $value}}/day

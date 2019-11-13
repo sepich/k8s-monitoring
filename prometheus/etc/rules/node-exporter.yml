@@ -1,0 +1,215 @@
+groups:
+- name: node-exporter
+  rules:
+  - alert: NodeCPUIdle
+    expr: avg without(cpu) (rate(node_cpu_seconds_total{mode="idle", instance!~".*fmdb-restore.*"}[2m])) * 100 < 20
+    for: 10m
+    labels:
+      severity: informational
+    annotations:
+      description: CPU idle 10m is {{printf "%.2f" $value}}%
+
+  - alert: NodeCPUSteal
+    expr: avg without(cpu) (rate(node_cpu_seconds_total{mode="steal", instance!~".*fmdb-restore.*"}[2m])) * 100 > 20
+    for: 10m
+    labels:
+      severity: informational
+    annotations:
+      description: CPU steal is over {{printf "%.2f" $value}}%, may need to reboot aws instance
+
+  - alert: NodeCPUThrottle
+    expr: rate(node_cpu_package_throttles_total[1m])>0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: CPU {{$labels.package}} throttle, check temperature
+
+    # =100 on vmware
+  - alert: NodeCPUTemperature
+    expr: node_hwmon_temp_celsius >95 !=100
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      description: CPU {{$labels.chip}} sensor {{$labels.sensor}} value is {{printf "%.2f" $value}}
+
+  - alert: NodeCPUiowait
+    expr: avg without(cpu) (rate(node_cpu_seconds_total{mode="iowait"}[2m])) * 100 > 50
+    for: 10m
+    labels:
+      severity: informational
+    annotations:
+      description: CPU iowait 10m is {{printf "%.2f" $value}}%
+
+  - alert: NodeFD
+    expr: 100 * node_filefd_allocated/node_filefd_maximum > 50
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: File descriptors {{printf "%.2f" $value}}% allocated
+
+  - alert: NodeFD
+    expr: 100 * node_filefd_allocated/node_filefd_maximum > 75
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      description: File descriptors {{printf "%.2f" $value}}% allocated
+
+  - alert: NodeFS
+    expr: 100*(node_filesystem_avail_bytes/node_filesystem_size_bytes) < 15 and node_filesystem_avail_bytes/1024/1024/1024<100
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      description: Volume {{$labels.mountpoint}} available {{printf "%.2f" $value}}%
+
+  - alert: NodeFSGrow
+    expr: node_filesystem_avail_bytes/node_filesystem_size_bytes<0.3 and predict_linear(node_filesystem_avail_bytes{instance!~".*fmdb-restore.*"}[3h], 24 * 3600)<0
+    for: 15m
+    labels:
+      severity: informational
+    annotations:
+      description: Volume {{$labels.mountpoint}} would be full in a day
+
+  - alert: NodeFSRO
+    expr: node_filesystem_readonly!=0
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: Volume {{$labels.mountpoint}} is read-only
+
+  - alert: NodeSwap
+    expr: 100*node_memory_SwapFree_bytes/node_memory_SwapTotal_bytes<30 and node_memory_SwapTotal_bytes>0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      description: Swap free {{printf "%.2f" $value}}%
+
+  - alert: NodeInfo
+    expr: count by(instance) (rate(node_uname_info[15m]))>1
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: Node info changed
+
+  - alert: NodeLA
+    expr: avg by(instance) (node_load5)/count by(instance) (node_cpu_seconds_total{mode="idle"}) >2
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: LA5 is {{printf "%.2f" $value}}/Core
+
+  # https://www.kernel.org/doc/Documentation/filesystems/proc.txt
+  # node_memory_MemAvailable_bytes is lower than MemFree
+  - alert: NodeMem
+    expr: 100*(node_memory_MemFree_bytes + node_memory_Cached_bytes + node_memory_Buffers_bytes)/node_memory_MemTotal_bytes < 9
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      description: MemAvailable is {{printf "%.2f" $value}}%
+
+  - alert: NodeTimeOffset
+    expr: node_timex_offset_seconds > 0.1
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: NTP time diff is {{printf "%.2f" $value}}s
+
+  - alert: NodeTimeDiff
+    expr: abs(node_time_seconds - time()) > 30
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Time difference with Prom is {{printf "%.2f" $value}}s
+
+  - alert: NodeTime
+    expr: node_timex_sync_status == 0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Time sync lost
+
+  - alert: NodeRebooted
+    expr: (node_time_seconds - node_boot_time_seconds)/60 < 15
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: Node rebooted {{printf "%.2f" $value}}min ago
+
+  - alert: NodeTcpEstab
+    expr: node_netstat_Tcp_CurrEstab > 15000
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: Too many connections {{printf "%.2f" $value}}
+
+  - alert: NodeTcpEstab
+    expr: node_netstat_Tcp_CurrEstab > 20000
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: Too many connections {{printf "%.2f" $value}}
+
+  - alert: NodeConntrack
+    expr: 100*node_nf_conntrack_entries/node_nf_conntrack_entries_limit > 50
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: Conntrack usage is {{printf "%.2f" $value}}%
+
+  - alert: NodeConntrack
+    expr: 100*node_nf_conntrack_entries/node_nf_conntrack_entries_limit > 75
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: Conntrack usage is {{printf "%.2f" $value}}%
+
+  # ceph-mgr is failing, should be 0
+  - alert: NodeOOM
+    expr: changes(node_vmstat_oom_kill[15m]) > 1
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: OOM kills {{printf "%.2f" $value}}/30min
+
+  - alert: NodeBond
+    expr: sum(node_bonding_active) by (master, instance) < 2
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Bond {{ $labels.master }} is degraded
+
+  - alert: NodeUnit
+    expr: node_systemd_unit_state{name=~".*.service", state="active"} != 1
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: '{{$labels.name}} is down'
+
+  # systemctl --failed
+  - alert: NodeUnits
+    expr: node_systemd_units{state="failed"}>0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Failed systemd units {{$value}}

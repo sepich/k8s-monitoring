@@ -1,0 +1,18 @@
+[Unit]
+Description=Prometheus exporter for MySQL server
+Documentation=https://github.com/percona/mysqld_exporter
+
+[Service]
+Restart=always
+User=prometheus
+ExecStart=/usr/bin/prometheus-mysqld-exporter \
+  -config.my-cnf /etc/mysql/zabbix.cnf \
+  -queries-file-name /etc/mysql/exporter.yml \
+  -collect.info_schema.query_response_time \
+  -collect.engine_innodb_status \
+  -collect.global_status \
+  -collect.global_variables \
+  -collect.slave_status
+
+[Install]
+WantedBy=multi-user.target

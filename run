@@ -1,0 +1,144 @@
+#!/bin/bash
+export ALERTMANAGER='am.domain.local:9093'
+
+main() {
+    cmd=$1
+    shift
+    case $cmd in
+        verify)   verify "$@";;
+        githook)  githook "$@";;
+        test)     test "$@";;
+        clean)    clean "$@";;
+        deploy)   deploy "$@";;
+        *) echo "$0 [verify|githook|test|clean|deploy] [cluster]"; exit 1;;
+    esac
+}
+
+check_remote() {
+    if [ "$1" ]; then
+        if [ -f ~/.kube/$1 ]; then
+            export KUBECONFIG=~/.kube/$1
+            kubectl get po &>/dev/null && echo "Connected to $1" || exit 1
+        else
+            echo "No kube config found: ~/.kube/$1!"
+            ls ~/.kube/
+            exit 1
+        fi
+    fi
+
+    export ENVIRONMENT='Prod'
+    export STACK_NAME=$1
+    case "$STACK_NAME" in
+        *dev*) export ENVIRONMENT='Dev';;
+        *qa*)  export ENVIRONMENT='QA';;
+        "")    exit 1;;
+    esac
+    echo -e "ENVIRONMENT: $ENVIRONMENT\nSTACK_NAME: $STACK_NAME"
+}
+
+verify() {
+    check_remote $1
+    id=`kubectl get po -n monitoring -l app=prometheus -o custom-columns=:metadata.name --no-headers`
+    kubectl -n monitoring exec -it $id -c thanos-sidecar -- thanos bucket verify --objstore.config-file=/run/secrets/storage.yml
+}
+
+githook() {
+    local files result
+    if [ ! -f .git/hooks/pre-commit ]; then
+        echo "Adding pre-commit hook..."
+        echo -e '#!/bin/bash\n./run githook' > .git/hooks/pre-commit
+        chmod +x .git/hooks/pre-commit
+    fi
+
+    for file in $(git diff --cached --name-only | grep /rules/); do
+        [ -f $file ] && files="$files $file"
+    done
+    [ -z "$files" ] && exit
+    test "$files"
+    result=$?
+    [ $result -ne 0 ] && echo "Commit rejected"
+    exit $result
+}
+
+test() {
+    local files="$*" result=0
+    [ -z "$files" ] && files=`ls prometheus/etc/rules/*`
+
+    docker run -t --rm -v `pwd`:/mnt -e files="$files" --entrypoint sh prom/prometheus -c '
+        set -e
+        for f in $files; do
+            promtool check rules /mnt/$f
+        done'
+    result=$(($result + $?))
+
+    docker run -t --rm -v `pwd`:`pwd` -w `pwd` \
+        sepa/python3-yaml:3.7 \
+        ./test-rules.py $files
+    result=$(($result + $?))
+
+    return $result
+}
+
+clean() {
+    check_remote $1
+    kubectl delete namespace monitoring
+}
+
+deploy() {
+    check_remote $1
+    apply_generic
+    [ "$STACK_NAME" == 'dev0' ] && grafana
+    prometheus
+    echo "Done"
+}
+
+apply_generic() {
+    [ "`kubectl -n kube-system get service -l kubernetes.io/name --ignore-not-found`" ] && kubectl -n kube-system label service/kube-dns kubernetes.io/cluster-service- kubernetes.io/name-
+    kubectl apply -Rf kubernetes/ | grep -v unchanged
+}
+
+grafana() {
+    kubectl -n monitoring create configmap grafana-dashboards --from-file=grafana/dashboards -o yaml --dry-run | grep -v creationTimestamp | kubectl apply -f - | grep -v unchanged
+    for f in grafana/*.yml; do kubectl apply -f $f | grep -v unchanged; done
+}
+
+prometheus() {
+    for f in adapter.yml node-exporter.yml rbac.yml service.yml; do
+        kubectl apply -f prometheus/$f | grep -v unchanged
+    done
+
+    # eval templates
+    cfg=`cat prometheus/etc/prometheus.tmpl.yml`
+    deployment=`cat prometheus/deployment.yml`
+    if [[ "$STACK_NAME" =~ ^(alpha1|dev0) ]]; then
+        # no S3, no etcd
+        deployment=`echo "$deployment" | grep -v '#drop on'`
+        cfg=`echo "$cfg" | sed -e '/#drop on/,/#drop on/d'`
+    else
+        # check secrets
+        if ! kubectl -n monitoring get secrets thanos-storage >/dev/null; then
+            echo -e "Please create S3 secret:\nkubectl -n monitoring create secret generic thanos-storage --from-file=storage.yml=secrets/va.yml"
+        fi
+
+        # monitor etcd only on multinodes
+        ETCD=`kubectl -n kube-system get po -l component=etcd --no-headers | wc -l`
+        if [ "$ETCD" -gt 1 ]; then
+            echo "ETCD: $ETCD"
+            if ! kubectl -n monitoring get secrets etcd-client >/dev/null; then
+                echo -e "\nPlease run on master node:
+                sudo KUBECONFIG=/etc/kubernetes/admin.conf kubectl -n monitoring create secret generic etcd-client \
+                --from-file=/etc/kubernetes/pki/etcd/ca.crt \
+                --from-file=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+                --from-file=/etc/kubernetes/pki/etcd/healthcheck-client.key\n"
+            fi
+        else
+            cfg=`echo "$cfg" | sed -e '/#drop on singleserver#/,/#drop on singleserver#/d'`
+            deployment=`echo "$deployment" | grep -v '#drop on singleserver'`
+        fi
+    fi
+
+    kubectl -n monitoring create configmap prometheus-config --from-literal=prometheus.tmpl.yml="$cfg" -o yaml --dry-run | grep -v creationTimestamp | envsubst '$ALERTMANAGER $STACK_NAME $ENVIRONMENT' | kubectl apply -f - | grep -v unchanged
+    echo "$deployment" | kubectl apply -f - | grep -v unchanged
+}
+
+main "$@"

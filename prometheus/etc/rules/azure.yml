@@ -1,0 +1,37 @@
+groups:
+- name: azure
+  rules:
+  - alert: AZScapeFail
+    expr: up{job="azure"} == 0
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      description: Error scraping of instance
+
+  - alert: AZCpuCredits
+    expr: predict_linear(azure_cpu_credits_remaining_count_average[3h], 24*3600)<0
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.resource_name}}'
+    annotations:
+      description: CPU credits would be over in a day
+
+  - alert: AZLBProbeFailed
+    expr: azure_dipavailability_count_average <100
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.resource_name}}'
+    annotations:
+      description: 'LoadBalancer backends {{printf "%.2f" $value}}%'
+
+  - alert: AZLBProbeFailed
+    expr: azure_dipavailability_count_average <66
+    for: 10m
+    labels:
+      severity: warning
+      instance: '{{$labels.resource_name}}'
+    annotations:
+      description: 'LoadBalancer backends {{printf "%.2f" $value}}%'

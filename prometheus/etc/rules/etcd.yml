@@ -1,0 +1,59 @@
+# https://blog.freshtracks.io/a-deep-dive-into-kubernetes-metrics-part-5-etcd-metrics-6502693fa58
+groups:
+- name: etcd
+  rules:
+  - alert: EtcdNoLeader
+    expr: etcd_server_has_leader == 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: etcd member has no leader
+
+  - alert: EtcdLeaderChanges
+    expr: increase(etcd_server_leader_changes_seen_total[15m]) > 3
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: 'leader changes last 15m: {{ printf "%.2f" $value }}'
+
+  - alert: EtcdMemberCommunicationSlow
+    expr: histogram_quantile(0.95, etcd_network_peer_round_trip_time_seconds_bucket) > 0.15
+    for: 10m
+    labels:
+      severity: informational
+    annotations:
+      description: communication with {{ $labels.To }} is slow
+
+  - alert: EtcdFailedProposals
+    expr: increase(etcd_server_proposals_failed_total[1m]) > 1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      description: '{{ printf "%.2f" $value }} proposal failures within the last 5m'
+
+  - alert: EtcdFsyncDurations
+    expr: histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])) > 0.5
+    for: 10m
+    labels:
+      severity: informational
+    annotations:
+      description: high fsync duration {{printf "%.2f" $value}}s
+
+  - alert: EtcdCommitDurations
+    expr: histogram_quantile(0.99, rate(etcd_disk_backend_commit_duration_seconds_bucket[5m])) > 0.5
+    for: 10m
+    labels:
+      severity: informational
+    annotations:
+      description: high commit duration {{printf "%.2f" $value}}s
+
+  - alert: EtcdGrpcErrors
+    expr: rate(grpc_server_handled_total{grpc_type="unary", grpc_code!="OK"}[5m]) > 0
+    for: 15m
+    labels:
+      severity: warning
+    annotations:
+      description: Errors for grpc method {{$labels.grpc_method}} is {{printf "%.2f" $value}}/s

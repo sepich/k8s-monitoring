@@ -1,0 +1,252 @@
+# https://github.com/percona/pmm
+groups:
+- name: mysql
+  rules:
+  - alert: MySQLup
+    expr: mysql_up != 1
+    for: 1m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: '{{$labels.instance}} down'
+
+  # galera
+  - alert: MySQLGaleraNotReady
+    expr: mysql_global_status_wsrep_ready != 1
+    for: 1m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: '{{$labels.instance}} is not ready'
+
+  - alert: MySQLGaleraCluster
+    expr: mysql_global_status_wsrep_cluster_status != 1
+    for: 1m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: '{{$labels.instance}} cluster is not primary'
+
+  - alert: MySQLGaleraConnected
+    expr: mysql_global_status_wsrep_connected != 1
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: '{{$labels.instance}} node is standalone'
+
+  - alert: MySQLGaleraFlow
+    expr: mysql_global_status_wsrep_flow_control_status != 0
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: '{{$labels.instance}} flow control: {{$value}}'
+
+  - alert: MySQLGaleraOutOfSync
+    expr: mysql_global_status_wsrep_local_state != 4 and mysql_global_variables_wsrep_desync == 0
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: ' {{$labels.instance}} is not synced'
+
+  - alert: MySQLGaleraDonorFallingBehind
+    expr: mysql_global_status_wsrep_local_state == 2 and mysql_global_status_wsrep_local_recv_queue > 100
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: '{{$labels.instance}} is a donor and is falling behind'
+
+  - alert: MySQLGaleraClusterSize
+    expr: count(mysql_global_status_wsrep_cluster_size) < count(max_over_time(mysql_global_status_wsrep_cluster_size[15m]))
+    for: 1m
+    labels:
+      severity: warning
+      instance: wsrep_cluster_size
+    annotations:
+      description: 'Cluster size low: {{$value}}'
+
+  - alert: MySQLGaleraAborts
+    expr: rate(mysql_global_status_wsrep_local_bf_aborts[1m])>0
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: '{{$labels.instance}} transactions aborted: {{printf "%.0f" $value}}/s'
+
+  - alert: MySQLGaleraCertFails
+    expr: rate(mysql_global_status_wsrep_local_cert_failures[1m])>0
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: '{{$labels.instance}} cert fails: {{printf "%.0f" $value}}/s'
+
+  - alert: MySQLGaleraQueue
+    expr: mysql_global_status_wsrep_local_recv_queue > 0
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: '{{$labels.instance}} recv_queue: {{$value}}'
+
+  # slave
+  - alert: MySQLReplicationNotRunning
+    expr: mysql_slave_status_slave_io_running == 0 or mysql_slave_status_slave_sql_running == 0
+    for: 1m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: '{{$labels.instance}} slave replication is stopped'
+
+  - alert: MySQLReplicationLag
+    expr: (mysql_slave_status_seconds_behind_master > 30) and on(instance) (predict_linear(mysql_slave_status_seconds_behind_master[15m], 60 * 15) > 0)
+    for: 15m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: The mysql slave replication has fallen behind and is not recovering
+
+  - alert: MySQLSlaveRW
+    expr: avg(mysql_slave_status_seconds_behind_master) by(stack,instance)==0 and avg(mysql_global_variables_read_only) by(stack,instance)==0
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: Read-only disabled on Slave
+
+  - alert: MySQLSlaveSuperRO
+    expr: avg(mysql_slave_status_seconds_behind_master) by(stack,instance)==0 and avg(mysql_global_variables_super_read_only) by(stack,instance)==1
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: Super Read-only enabled on Slave
+
+  # IO
+  - alert: MySQLPendingFsync
+    expr: mysql_global_status_innodb_data_pending_fsyncs + mysql_global_status_innodb_os_log_pending_fsyncs >1
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: Pending fsyncs {{printf "%.0f" $value}}
+
+  - alert: MySQLPendingIO
+    expr: mysql_global_status_innodb_data_pending_reads + mysql_global_status_innodb_data_pending_writes + mysql_global_status_innodb_os_log_pending_writes >1
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: Pending IO {{printf "%.0f" $value}}
+
+  # config
+  - alert: MySQLTableCache
+    expr: 100*avg(mysql_global_status_open_tables)without(job)/avg(mysql_global_variables_table_open_cache)without(job) > 85
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: Table cache usage {{printf "%.0f" $value}}
+
+  - alert: MySQLConnections
+    expr: 100*avg(mysql_global_status_threads_connected)without(job)/avg(mysql_global_variables_max_connections)without(job) > 75
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: Threads connected {{printf "%.0f" $value}} of limit
+
+  - alert: MySQLConnections
+    expr: 100*avg(mysql_global_status_threads_connected)without(job)/avg(mysql_global_variables_max_connections)without(job) > 85
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: Threads connected {{printf "%.0f" $value}} of limit
+
+  # innodb
+  - alert: MySQLInnoDBLogWaits
+    expr: rate(mysql_global_status_innodb_log_waits[1m]) > 10
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: The innodb logs are waiting for disk at a rate of {{printf "%.0f" $value}}/s
+
+  - alert: MySQLhistory
+    expr: mysql_info_schema_innodb_metrics_transaction_trx_rseg_history_len > 1000000
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: History List, check long transactions
+
+  - alert: MySQLthreads
+    expr: mysql_global_status_threads_running > 40
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: Threads running {{printf "%.0f" $value}}
+
+  - alert: MySQLthreads
+    expr: mysql_global_status_threads_running > 100
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}/{{$labels.instance}}'
+    annotations:
+      description: Threads running {{printf "%.0f" $value}}
+
+  # cron
+  - alert: MySQLPtCheck
+    expr: pt_table_check_result > 0
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.stack}}'
+    annotations:
+      description: pt-table-checksum {{printf "%.0f" $value}}
+
+  - alert: MySQLBackup
+    expr: xtrabackup_result > 0
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.stack}}'
+    annotations:
+      description: xtrabackup failed
+
+  - alert: MySQLRestore
+    expr: xtrarestore_result > 0
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.stack}}'
+    annotations:
+      description: xtrarestore failed

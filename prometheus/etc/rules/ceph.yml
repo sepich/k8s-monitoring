@@ -1,0 +1,38 @@
+groups:
+- name: ceph
+  rules:
+  - alert: CephHealth
+    expr: ceph_health_status == 1
+    for: 1m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Health status is WARN
+
+  - alert: CephHealth
+    expr: ceph_health_status == 2
+    for: 1m
+    labels:
+      severity: major
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Health status is ERROR
+
+  - alert: CephFull
+    expr: 100*ceph_cluster_total_used_bytes/ceph_cluster_total_bytes > 60
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Ceph usage is {{printf "%.0f" $value}}%
+
+  - alert: CephFull
+    expr: 100*ceph_cluster_total_used_bytes/ceph_cluster_total_bytes > 75
+    for: 1m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Ceph usage is {{printf "%.0f" $value}}%

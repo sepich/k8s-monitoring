@@ -1,0 +1,89 @@
+groups:
+- name: es
+  rules:
+  - alert: ESHeapUsage
+    expr: elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"} > 0.85
+    for: 15m
+    labels:
+      severity: informational
+    annotations:
+      description: The heap usage is over 85% for 15m
+
+  - alert: ESHeapUsage
+    expr: elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"} > 0.9
+    for: 15m
+    labels:
+      severity: warning
+    annotations:
+      description: The heap usage is over 90% for 15m
+
+  - alert: ESHealth
+    expr: max(elasticsearch_cluster_health_status{color="yellow"}) by(cluster)>0
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.cluster}}'
+    annotations:
+      description: Health is Yellow
+
+  - alert: ESHealth
+    expr: max(elasticsearch_cluster_health_status{color="red"}) by(cluster)>0
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.cluster}}'
+    annotations:
+      description: Health is Red
+
+  - alert: ESBackup
+    expr: (time()-elasticsearch_snapshot_last_success_time)/3600/24 > 3
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.stack}}'
+    annotations:
+      description: ES backup is {{printf "%.1f" $value}} days old
+
+  - alert: ESHealthScrape
+    expr: elasticsearch_cluster_health_up != 1
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.cluster}}'
+    annotations:
+      description: Health scrape failed
+
+  - alert: ESClusterScrape
+    expr: elasticsearch_clusterinfo_up != 1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      description: Cluster scrape failed
+
+  - alert: ESNodesScrape
+    expr: elasticsearch_node_stats_up != 1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      description: Nodes scrape failed
+
+  - alert: ESNodeParseErr
+    expr: rate(elasticsearch_node_stats_json_parse_failures[15m]) > 0
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: Node stats parse fails
+
+  - alert: ESParseErr
+    expr: rate(elasticsearch_cluster_health_json_parse_failures[15m]) > 0
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.stack}}'
+    annotations:
+      description: Health stats parse fails
+
+# watermark?

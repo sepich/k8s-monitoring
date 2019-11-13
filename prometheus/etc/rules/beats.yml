@@ -1,0 +1,87 @@
+groups:
+- name: beats
+  rules:
+  - alert: FileBeatFDUsed
+    expr: 100*filebeat_beat_handles_open/min(filebeat_beat_handles{limit="hard"}) without(limit) > 50
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Filebeat handles used {{printf "%.0f" $value}}%
+
+  - alert: JournalBeatFDUsed
+    expr: 100*journalbeat_beat_handles_open/min(journalbeat_beat_handles{limit="hard"}) without(limit) > 50
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Filebeat handles used {{printf "%.0f" $value}}%
+
+  - alert: FileBeatQueue
+    expr: filebeat_libbeat_pipeline{events="active"} > 100
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Filebeat queue {{printf "%.0f" $value}}
+
+  - alert: JournalBeatQueue
+    expr: journalbeat_libbeat_pipeline{events="active"} > 100
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Journalbeat queue {{printf "%.0f" $value}}
+
+  - alert: FileBeatQueue
+    expr: filebeat_libbeat_pipeline{events="active"} >100 and delta(filebeat_libbeat_pipeline{events="active"}[15m]) >0
+    for: 15m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Filebeat queue is {{printf "%.0f" $value}} and growing
+
+  - alert: JournalBeatQueue
+    expr: journalbeat_libbeat_pipeline{events="active"} >100 and delta(journalbeat_libbeat_pipeline{events="active"}[15m]) >0
+    for: 15m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Journalbeat queue is {{printf "%.0f" $value}} and growing
+
+  - alert: BeatsRetries
+    expr: rate(filebeat_libbeat_pipeline{events="retry"}[1m]) + rate(journalbeat_libbeat_pipeline{events="retry"}[1m]) > 0
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Output retry {{printf "%.0f" $value}}/s
+
+  - alert: BeatsDropped
+    expr: rate(filebeat_libbeat_output{events=~"failed|dropped"}[1m]) + rate(journalbeat_libbeat_output{events=~"failed|dropped"}[1m]) > 0
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Output dropped {{printf "%.0f" $value}}/s
+
+  - alert: BeatsError
+    expr: >
+      rate(filebeat_libbeat_output{read="errors"}[1m]) +
+      rate(filebeat_libbeat_output{write="errors"}[1m]) +
+      rate(journalbeat_libbeat_output{read="errors"}[1m]) +
+      rate(journalbeat_libbeat_output{write="errors"}[1m]) > 0
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.kubernetes_pod_node_name}}'
+    annotations:
+      description: Output retry {{printf "%.0f" $value}}/s

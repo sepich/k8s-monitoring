@@ -1,0 +1,121 @@
+groups:
+- name: prometheus
+  rules:
+  - alert: InstanceDown
+    # not-ready too often, have separate alert in azure.yml
+    expr: up{job!="azure"} == 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      description: Error scraping of instance
+
+  - alert: PromSamples
+    expr: rate(prometheus_tsdb_head_samples_appended_total[5m]) == 0
+    for: 10m
+    labels:
+      severity: warning
+      instance: '{{$labels.monitor}}'
+    annotations:
+      description: Prometheus no new samples
+
+  - alert: PromConfig
+    expr: prometheus_config_last_reload_successful == 0
+    for: 1m
+    labels:
+      severity: warning
+      instance: '{{$labels.monitor}}'
+    annotations:
+      description: Config reload has failed
+
+  - alert: PromSlow
+    expr: prometheus_rule_evaluation_duration_seconds{quantile="0.9"} > 5
+    for: 10m
+    labels:
+      severity: warning
+      instance: '{{$labels.monitor}}'
+    annotations:
+      description: Rule evaluation too slow
+
+  - alert: PromSlowScrape
+    expr: prometheus_target_interval_length_seconds{interval="15s", quantile="0.9"} > 30
+    for: 10m
+    labels:
+      severity: warning
+      instance: '{{$labels.monitor}}'
+    annotations:
+      description: Scraping is slow {{printf "%.2f" $value}}s
+
+  - alert: PromSlowRule
+    expr: 100*prometheus_rule_group_last_duration_seconds/prometheus_rule_group_interval_seconds > 50
+    for: 30m
+    labels:
+      severity: warning
+      instance: '{{$labels.monitor}}'
+    annotations:
+      description: Rule group {{$labels.rule_group}} is taking more than 50% of the evaluation over the last 30 minutes
+
+  - alert: PromLargeScrapes
+    expr: increase(prometheus_target_scrapes_exceeded_sample_limit_total[30m]) > 0
+    for: 1m
+    labels:
+      severity: informational
+      instance: '{{$labels.monitor}}'
+    annotations:
+      description: Scrapes are exceding sample limit
+
+  - alert: PromFailedCheckpoints
+    expr: increase(prometheus_tsdb_checkpoint_creations_failed_total[2h]) > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: Failed to create checkpoints
+
+  - alert: PromFailedDel
+    expr: increase(prometheus_tsdb_checkpoint_deletions_failed_total[5m]) > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: Prometheus has failed deleting checkpoints
+
+  - alert: PromWAL
+    expr: increase(prometheus_tsdb_wal_truncations_failed_total[5m]) > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: Prometheus has failed wal truncations
+
+  - alert: PromFailedEval
+    expr: increase(prometheus_rule_evaluation_failures_total[2m]) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      description: Prometheus has failing rule evaluations
+
+  - alert: PrometheusErrorSendingAlerts
+    expr: increase(prometheus_notifications_errors_total[5m]) > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: Error sending alerts to Alertmanager
+
+  - alert: AlertmanagerFails
+    expr: rate(alertmanager_notifications_failed_total[1m]) > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: Alertmanager sending error for integration {{$labels.integration}}
+
+  - alert: PromGitSync
+    expr: rate(git_sync_count_total{status!="success"}[1m]) > 0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: 'Git-sync status: {{$labels.status}}'

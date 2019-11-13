@@ -6,9 +6,28 @@ metadata:
   labels:
     app: prometheus
   annotations:
-    prometheus.io/scrape: 'true'
+    prometheus.io/scrape: "true"
 spec:
   ports:
     - port: 9090
+  selector:
+    app: prometheus
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos
+  namespace: monitoring
+  labels:
+    app: thanos
+spec:
+  externalTrafficPolicy: Cluster
+  sessionAffinity: None
+  type: NodePort
+  ports:
+  - port: 10901
+    protocol: TCP
+    nodePort: 30901
+    name: grpc
   selector:
     app: prometheus

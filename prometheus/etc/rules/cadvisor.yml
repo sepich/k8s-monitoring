@@ -1,0 +1,50 @@
+groups:
+- name: cadvisor
+  rules:
+  # mgr - https://github.com/ceph/ceph-container/issues/1320
+  - alert: ContainerMem
+    expr: >
+      100 * container_memory_working_set_bytes{container!~"|tika|mgr|elasticsearch"}/container_spec_memory_limit_bytes >90 <100
+      and
+      container_spec_memory_limit_bytes - container_memory_working_set_bytes < 100*1024*1024
+    for: 5m
+    labels:
+      severity: informational
+      event: '{{$labels.pod}}/{{$labels.container}}'
+    annotations:
+      description: Container memory usage is {{printf "%.0f" $value}}%
+
+  - alert: ContainerMemNoLimit
+    expr: container_spec_memory_limit_bytes{container!="POD", namespace="default"} == 0
+    for: 1m
+    labels:
+      severity: informational
+      event: '{{$labels.pod}}/{{$labels.container}}'
+    annotations:
+      description: Memory limit is not set
+
+      #  - alert: ContainerMemHitLimit
+      #    expr: rate(container_memory_failcnt[1m])>2
+      #    for: 5m
+      #    labels:
+      #      severity: informational
+      #      event: '{{$labels.pod}}/{{$labels.container}}'
+      #    annotations:
+      #      description: Memory usage hits limits
+
+  - alert: ContainerCPUThrottle
+    expr: rate(container_cpu_cfs_throttled_seconds_total[1m]) > 0.1
+    for: 15m
+    labels:
+      severity: informational
+      event: '{{$labels.pod}}/{{$labels.container}}'
+    annotations:
+      description: CPU usage hits limits
+
+  - alert: ContainerScrapeErr
+    expr: container_scrape_error != 0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: cadvisor scrape error

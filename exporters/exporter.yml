@@ -1,0 +1,47 @@
+## Custom queries
+
+# mysql_info_schema_innodb_metrics_transaction_trx_rseg_history_len
+mysql_info_schema_innodb_metrics_transaction_trx_rseg_history:
+  query: SELECT count AS len FROM information_schema.innodb_metrics WHERE name='trx_rseg_history_len'
+  metrics:
+  - len:
+      usage: GAUGE
+      description: InnoDB transaction history length
+
+mysql_performance_schema:
+  query: |
+    select sum(SUM_SELECT_FULL_JOIN) AS sum_select_full_join,
+    sum(SUM_NO_INDEX_USED) AS sum_no_index_used,
+    sum(SUM_CREATED_TMP_DISK_TABLES) AS sum_created_tmp_disk_tables
+    FROM performance_schema.events_statements_summary_by_digest
+  metrics:
+  - sum_select_full_join:
+      usage: COUNTER
+  - sum_no_index_used:
+      usage: COUNTER
+  - sum_created_tmp_disk_tables:
+      usage: COUNTER
+
+mysql_info_schema_innodb_trx:
+  query: |
+    select * from
+    (select count(*) AS locking1000 from INFORMATION_SCHEMA.INNODB_TRX where trx_rows_locked>1000) AS t1
+    join
+    (select count(*) AS count from INFORMATION_SCHEMA.INNODB_TRX) AS t2
+    join
+    (select count(*) AS running from INFORMATION_SCHEMA.INNODB_TRX t, INFORMATION_SCHEMA.PROCESSLIST p WHERE t.trx_mysql_thread_id=p.ID AND p.COMMAND='Query') AS t3
+    join
+    (select count(*) AS running1 from INFORMATION_SCHEMA.INNODB_TRX t, INFORMATION_SCHEMA.PROCESSLIST p WHERE t.trx_mysql_thread_id=p.ID AND p.COMMAND='Query' AND p.TIME>1) AS t4
+    join
+    (select count(*) AS running10 from INFORMATION_SCHEMA.INNODB_TRX t, INFORMATION_SCHEMA.PROCESSLIST p WHERE t.trx_mysql_thread_id=p.ID AND p.COMMAND='Query' AND p.TIME>10) AS t5
+  metrics:
+  - locking1000:
+      usage: GAUGE
+  - count:
+      usage: GAUGE
+  - running:
+      usage: GAUGE
+  - running1:
+      usage: GAUGE
+  - running10:
+      usage: GAUGE

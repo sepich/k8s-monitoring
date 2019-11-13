@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-store
+  namespace: monitoring
+  labels:
+    app: thanos-store
+spec:
+  externalTrafficPolicy: Cluster
+  sessionAffinity: None
+  type: NodePort
+  ports:
+  - port: 10901
+    protocol: TCP
+    nodePort: 30902
+    name: store
+  selector:
+    app: thanos-store
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thanos-store
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: thanos-store
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: thanos-store
+      annotations:
+        prometheus.io/port: "10902"
+        prometheus.io/scrape: "true"
+    spec:
+      initContainers:
+        - name: init-vol
+          image: busybox
+          command:
+          - sh
+          - -c
+          - chown 65534:65534 -R /data
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: thanos-store
+          image: thanosio/thanos:v0.8.1
+          args:
+          - store
+          - --data-dir=/data
+          - --objstore.config-file=/run/secrets/storage.yml
+          - --index-cache-size=10GB
+          - --chunk-pool-size=10GB
+          securityContext:
+            runAsUser: 65534
+          resources:
+            requests:
+              memory: 3Gi
+              cpu: 10m
+            limits:
+              memory: 4Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: thanos-storage
+              mountPath: /run/secrets/
+      priorityClassName: medium
+      dnsConfig:
+        options:
+        - name: ndots
+          value: '2'
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: thanos-storage
+          secret:
+            secretName: thanos-storage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thanos-compact
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: thanos-compact
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: thanos-compact
+      annotations:
+        prometheus.io/port: "10902"
+        prometheus.io/scrape: "true"
+    spec:
+      initContainers:
+        - name: init-vol
+          image: busybox
+          command:
+          - sh
+          - -c
+          - chown 65534:65534 /data
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: thanos-compact
+          image: thanosio/thanos:v0.8.1
+          args:
+          - compact
+          -  -w
+          - --data-dir=/data
+          - --objstore.config-file=/run/secrets/storage.yml
+          - --retention.resolution-raw=14d
+          - --retention.resolution-5m=30d
+          - --retention.resolution-1h=0d
+          livenessProbe:
+            httpGet:
+              port: 10902
+              path: /-/healthy
+          readinessProbe:
+            httpGet:
+              port: 10902
+              path: /-/ready
+          securityContext:
+            runAsUser: 65534
+          resources:
+            requests:
+              memory: 1Gi
+            limits:
+              memory: 4Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: thanos-storage
+              mountPath: /run/secrets/
+      priorityClassName: low
+      dnsConfig:
+        options:
+        - name: ndots
+          value: '2'
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: thanos-storage
+          secret:
+            secretName: thanos-storage

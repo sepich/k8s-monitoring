@@ -1,0 +1,192 @@
+# https://github.com/DirectXMan12/k8s-prometheus-adapter
+# https://github.com/coreos/kube-prometheus/blob/master/manifests/
+# TODO: https://github.com/coreos/prometheus-operator/tree/master/contrib/kube-prometheus/experimental/custom-metrics-api
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adapter-config
+  namespace: monitoring
+data:
+  config.yaml: |
+    resourceRules:
+      cpu:
+        containerQuery: sum(rate(container_cpu_usage_seconds_total{<<.LabelMatchers>>}[1m])) by (<<.GroupBy>>)
+        nodeQuery: sum(rate(container_cpu_usage_seconds_total{<<.LabelMatchers>>, id='/'}[1m])) by (<<.GroupBy>>)
+        resources:
+          overrides:
+            instance:
+              resource: node
+            namespace:
+              resource: namespace
+            pod:
+              resource: pod
+        containerLabel: container
+      memory:
+        containerQuery: sum(container_memory_working_set_bytes{<<.LabelMatchers>>}) by (<<.GroupBy>>)
+        nodeQuery: sum(container_memory_working_set_bytes{<<.LabelMatchers>>,id='/'}) by (<<.GroupBy>>)
+        resources:
+          overrides:
+            instance:
+              resource: node
+            namespace:
+              resource: namespace
+            pod:
+              resource: pod
+        containerLabel: container
+      window: 1m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adapter
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      name: adapter
+  template:
+    metadata:
+      labels:
+        name: adapter
+    spec:
+      containers:
+      - args:
+        - --cert-dir=/var/run/serving-cert
+        - --config=/etc/adapter/config.yaml
+        - --logtostderr=true
+        # - --v=10
+        - --metrics-relist-interval=1m
+        - --prometheus-url=http://prometheus.monitoring.svc.cluster.local:9090/
+        - --secure-port=6443
+        image: quay.io/coreos/k8s-prometheus-adapter-amd64:v0.5.0
+        name: adapter
+        resources:
+          limits:
+            memory: 48Mi
+          requests:
+            memory: 16Mi
+            cpu: 10m
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmpfs
+        - mountPath: /var/run/serving-cert
+          name: volume-serving-cert
+        - mountPath: /etc/adapter
+          name: config
+          readOnly: true
+      serviceAccountName: prometheus-adapter
+      priorityClassName: medium
+      volumes:
+      - name: tmpfs
+        emptyDir: {}
+      - name: volume-serving-cert
+        emptyDir: {}
+        # secret:
+        #   secretName: cm-adapter-serving-certs
+      - name: config
+        configMap:
+          name: adapter-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: prometheus-adapter
+  name: prometheus-adapter
+  namespace: monitoring
+spec:
+  ports:
+  - name: https
+    port: 443
+    targetPort: 6443
+  selector:
+    name: adapter
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-adapter
+  namespace: monitoring
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta1.metrics.k8s.io
+spec:
+  group: metrics.k8s.io
+  groupPriorityMinimum: 100
+  insecureSkipTLSVerify: true
+  service:
+    name: prometheus-adapter
+    namespace: monitoring
+  version: v1beta1
+  versionPriority: 100
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-adapter
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  - namespaces
+  - pods
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-adapter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-adapter
+subjects:
+- kind: ServiceAccount
+  name: prometheus-adapter
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: resource-metrics:system:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: prometheus-adapter
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: resource-metrics-server-resources
+rules:
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - '*'
+  verbs:
+  - '*'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: resource-metrics-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: prometheus-adapter
+  namespace: monitoring

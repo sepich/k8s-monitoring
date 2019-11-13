@@ -1,0 +1,26 @@
+groups:
+- name: blackbox
+  rules:
+  - alert: ProbeFailing
+    expr: probe_success == 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      description: Http connection failed
+
+  - alert: CertExpires
+    expr: (probe_ssl_earliest_cert_expiry - time())/86400 < 30
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Cert expires in {{printf "%.0f" $value}} day(s)
+
+  - alert: CertExpires
+    expr: (probe_ssl_earliest_cert_expiry - time())/86400 < 5
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      description: Cert expires in {{printf "%.0f" $value}} day(s)

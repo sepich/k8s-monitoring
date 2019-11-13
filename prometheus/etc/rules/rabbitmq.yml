@@ -1,0 +1,64 @@
+groups:
+- name: rabbitmq
+  rules:
+  - alert: RBCluster
+    expr: count(rabbitmq_node_up) by(instance) != scalar(max(count(rabbitmq_node_up) by(instance)))
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      description: 'Clustered nodes: {{printf "%.0f" $value}}'
+
+  - alert: RBQueueState
+    expr: rabbitmq_queue_state != 0
+    for: 15m
+    labels:
+      severity: informational
+    annotations:
+      description: Queue {{$labels.vhost}}/{{$labels.queue}} failed
+
+  - alert: RBQueueNoConsumers
+    expr: avg(rabbitmq_queue_messages{queue!~".*_(skipped|error)"}>0 and rabbitmq_queue_consumers==0) by(vhost,queue)
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.vhost}}/{{$labels.queue}}'
+    annotations:
+      description: No consumers  and {{printf "%.0f" $value}} messages
+
+  - alert: RBQueueNoConsumers
+    expr: avg(rabbitmq_queue_messages{queue!~".*_(skipped|error)"}>0 and rabbitmq_queue_consumers==0) by(vhost,queue)
+    for: 15m
+    labels:
+      severity: warning
+      instance: '{{$labels.vhost}}/{{$labels.queue}}'
+    annotations:
+      description: No consumers  and {{printf "%.0f" $value}} messages
+
+  - alert: RBQueueState
+    expr: rabbitmq_queue_state != 0
+    for: 5m
+    labels:
+      severity: warning
+      instance: '{{$labels.vhost}}/{{$labels.queue}}'
+    annotations:
+      description: Queue failed
+
+  - alert: RBQueueRedeliver
+    expr: rate(rabbitmq_queue_messages_redelivered_total[1m]) > 0
+    for: 5m
+    labels:
+      severity: informational
+      instance: '{{$labels.vhost}}/{{$labels.queue}}'
+    annotations:
+      description: Redeliver {{printf "%.2f" $value}}/s
+
+  - alert: RBQueueMessages
+    expr: avg(rabbitmq_queue_messages) by(vhost, queue) >100000 and max(delta(rabbitmq_queue_messages[15m]))by(vhost, queue) >0
+    for: 15m
+    labels:
+      severity: informational
+      instance: '{{$labels.vhost}}/{{$labels.queue}}'
+    annotations:
+      description: '{{printf "%.0f" $value}} messages and growing'
+

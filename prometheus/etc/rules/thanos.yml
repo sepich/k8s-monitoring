@@ -1,0 +1,77 @@
+groups:
+- name: thanos
+  rules:
+# query
+  - alert: ThanosNodeLost
+    expr: delta(thanos_store_nodes_grpc_connections[15m]) < 0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Lost connection to {{printf "%.0f" $value}} store/sidecar(s)
+
+  - alert: ThanosSrvGrpcErrorRate
+    expr: rate(grpc_server_handled_total{grpc_code!="OK",grpc_service=~"thanos.*"}[5m]) > 0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Thanos Sidecar is returning Internal/Unavailable errors
+
+  - alert: ThanosCliGrpcErrorRate
+    expr: rate(grpc_client_handled_total{grpc_code!="OK", grpc_service=~"thanos.*"}[5m]) > 0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Thanos GRPC {{$labels.grpc_code}} {{printf "%.2f" $value}}/s
+
+  - alert: ThanosHttpErrorRate
+    expr: rate(http_requests_total{instance=~"thanos.*", code!="200"}[1m]) > 0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Thanos HTTP {{$labels.handler}} errors {{$labels.code}} {{printf "%.2f" $value}}/s
+
+# sidecar
+  - alert: ThanosPromDown
+    expr: thanos_sidecar_prometheus_up == 0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Thanos Sidecar cannot connect to Prometheus
+
+  - alert: ThanosNoUploads
+    expr: thanos_shipper_uploads_total offset 2h and rate(thanos_shipper_uploads_total[2h])==0
+    for: 1m
+    labels:
+      severity: informational
+    annotations:
+      description: No uploads from sidecar for 15m
+
+# compaction
+  - alert: ThanosCompactHalted
+    expr: thanos_compactor_halted == 1
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Thanos compaction has failed to run and now is halted
+
+  - alert: ThanosCompactFailed
+    expr: rate(prometheus_tsdb_compactions_failed_total[5m]) > 0
+    for: 5m
+    labels:
+      severity: informational
+    annotations:
+      description: Thanos Compact is failing compaction
+
+  - alert: ThanosFailedUpload
+    expr: (time() - thanos_objstore_bucket_last_successful_upload_time{instance!~"thanos-store.*"}) > 12 * 3600
+    for: 3h
+    labels:
+      severity: warning
+    annotations:
+      description: Last block uploaded {{ humanizeDuration $value }} ago
